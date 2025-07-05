@@ -1,0 +1,348 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Brain, Send, ZoomIn, ZoomOut } from 'lucide-react';
+
+// --- Core Simulation Constants ---
+const FIELD_SIZE = 1200;
+const ATTRACTION_FORCE = 0.002;
+const DAMPING = 0.95;
+
+// --- AI & Word States ---
+const ACTIVATION_DECAY = 0.96;
+const MEMORY_DECAY = 0.998;
+const CONNECTION_STRENGTH = 0.15;
+
+// --- WordAttractor Class: Each word is an agent ---
+class WordAttractor {
+    constructor(word, semanticX, semanticY) {
+        this.word = word;
+        this.x = Math.random() * FIELD_SIZE;
+        this.y = Math.random() * FIELD_SIZE;
+        this.vx = 0;
+        this.vy = 0;
+        this.semanticX = semanticX;
+        this.semanticY = semanticY;
+        this.activation = 0;
+        this.memory = 0;
+        this.connections = new Map();
+    }
+
+    activate() {
+        this.activation = 1.0;
+        this.memory = Math.min(1.0, this.memory + 0.1);
+    }
+
+    update() {
+        this.activation *= ACTIVATION_DECAY;
+        this.memory *= MEMORY_DECAY;
+        if (this.memory < 0.01) this.memory = 0;
+        if (this.activation < 0.01) this.activation = 0;
+
+        const dx = this.semanticX - this.x;
+        const dy = this.semanticY - this.y;
+        this.vx += dx * ATTRACTION_FORCE;
+        this.vy += dy * ATTRACTION_FORCE;
+        this.vx *= DAMPING;
+        this.vy *= DAMPING;
+        this.x += this.vx;
+        this.y += this.vy;
+    }
+
+    draw(ctx, transform) {
+        let radius = 1 / transform.scale;
+        let color = "rgba(100, 100, 100, 0.5)";
+
+        if (this.activation > 0.01) {
+            radius = (2 + this.activation * 8) / transform.scale;
+            color = `rgba(255, 70, 70, ${0.5 + this.activation * 0.5})`;
+        } else if (this.memory > 0.01) {
+            radius = (2 + this.memory * 4) / transform.scale;
+            color = `rgba(70, 70, 255, ${0.3 + this.memory * 0.5})`;
+        }
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (this.activation > 0.4 || this.memory > 0.6) {
+            const fontSize = 12 / transform.scale;
+            ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(this.activation, this.memory)})`;
+            ctx.font = `${fontSize}px Arial`;
+            ctx.textAlign = "center";
+            ctx.fillText(this.word, this.x, this.y - radius - (5 / transform.scale));
+        }
+    }
+}
+
+// --- LanguageField Class: Manages the whole system ---
+class LanguageField {
+    constructor() {
+        this.words = new Map();
+        this.wordList = [];
+        this.currentContext = [];
+        this.initializeVocabulary();
+    }
+
+    initializeVocabulary() {
+        // --- EXPANDED VOCABULARY ---
+        const poles = {
+            ACTION: { x: FIELD_SIZE * 0.1, y: FIELD_SIZE * 0.5, keywords: ['is','are','was','be','do','go','say','run','talk','see','think','know','learn', 'we', 'what', 'how', 'why', 'should', 'had', 'took', 'got', 'said', 'stood', 'watching', 'seemed', 'rest', 'haunted', 'comes', 'ends', 'begins', 'hurting', 'loving', 'change', 'stops', 'decided', 'write', 'titled', 'worked', 'carry', 'forgotten', 'heal', 'ends', 'speak', 'i am'] },
+            OBJECT: { x: FIELD_SIZE * 0.9, y: FIELD_SIZE * 0.5, keywords: ['i','you','me','it','he','she','they','name','word','thing','world','field','machine','human','people','time', 'bloodline', 'military', 'marines', 'fresh', 'grave', 'lay', 'headstone', 'flowers', 'graves', 'heart', 'father', 'peace', 'one', 'cycle', 'blood', 'choice', 'spring', 'lena', 'ann', 'porch', 'farm', 'sunset', 'fields', 'legacy', 'violence', 'family', 'generations', 'end', 'beginnings', 'emotions', 'rivers', 'love', 'hurt', 'course', 'affliction', 'story', 'newspapers', 'account', 'history', 'manuscript', 'photo', 'wade', 'jill', 'myself', 'hospital', 'room', 'reminder', 'ghost', 'memories', 'struggles', 'understanding', 'our', 'future', 'whitehouse'] },
+            CONCEPT: { x: FIELD_SIZE * 0.5, y: FIELD_SIZE * 0.1, keywords: ['this','that','a','the','and','or','not','but','if','of','to','in','for','with','about', 'three', 'months', 'after', 'passing', 'same', 'cemetery', 'beside', 'who', 'even', 'before', 'no', 'there', 'out', 'later', 'on', 'what', 'next', 'just', 'true', 'simply', 'also', 'perhaps', 'hmm'] },
+            QUALIFIER: { x: FIELD_SIZE * 0.5, y: FIELD_SIZE * 0.9, keywords: ['good','bad','small','large','other','my','your','his','her','yes','no','ok', 'am', 'heavy', 'young', 'smiling', 'confident', 'poisoned', 'finally', 'endless', 'flowing', 'full', 'nearby', 'lost', 'found', 'both', 'truly'] },
+        };
+        const vocabulary = [...new Set(Object.values(poles).flatMap(p => p.keywords))];
+        
+        vocabulary.forEach(word => {
+            let totalX = 0, totalY = 0, count = 0;
+            for (const pole of Object.values(poles)) {
+                if (pole.keywords.includes(word)) {
+                    totalX += pole.x;
+                    totalY += pole.y;
+                    count++;
+                }
+            }
+            const semanticX = count > 0 ? totalX / count : FIELD_SIZE / 2;
+            const semanticY = count > 0 ? totalY / count : FIELD_SIZE / 2;
+            const attractor = new WordAttractor(word, semanticX, semanticY);
+            this.words.set(word, attractor);
+        });
+        this.wordList = Array.from(this.words.values());
+    }
+
+    processText(text) {
+        const uniqueWords = [...new Set(text.toLowerCase().replace(/[.,!?]/g, '').split(/\s+/).filter(w => this.words.has(w)))];
+        uniqueWords.forEach((word, i) => {
+            const attractor = this.words.get(word);
+            if (attractor) {
+                attractor.activate();
+                if (i > 0) {
+                    const prevWord = this.words.get(uniqueWords[i - 1]);
+                    if (prevWord) this.addConnection(attractor, prevWord);
+                }
+            }
+        });
+        this.currentContext = uniqueWords.slice(-10);
+    }
+    
+    addConnection(word1, word2) {
+        const strength1 = word1.connections.get(word2.word) || 0;
+        word1.connections.set(word2.word, Math.min(1.0, strength1 + CONNECTION_STRENGTH));
+        const strength2 = word2.connections.get(word1.word) || 0;
+        word2.connections.set(word1.word, Math.min(1.0, strength2 + CONNECTION_STRENGTH));
+    }
+
+    generateResponse() {
+        if (this.currentContext.length === 0) {
+            const activeInMemory = this.wordList.filter(w => w.memory > 0.3);
+            if(activeInMemory.length > 0) {
+                 this.currentContext = [activeInMemory[Math.floor(Math.random() * activeInMemory.length)].word];
+            } else {
+                return "The field is quiet. Say something to begin.";
+            }
+        }
+        let currentWordStr = this.currentContext[Math.floor(Math.random() * this.currentContext.length)];
+        const response = [currentWordStr];
+        const maxLen = 5 + Math.floor(Math.random() * 15);
+        for (let i = 0; i < maxLen; i++) {
+            const currentWord = this.words.get(currentWordStr);
+            if (!currentWord) break;
+            let candidates = [];
+            for (const [word, strength] of currentWord.connections.entries()) {
+                const attractor = this.words.get(word);
+                if (attractor) candidates.push({ word, weight: strength + attractor.activation + attractor.memory * 0.5 });
+            }
+            this.wordList.forEach(w => {
+                if (w.activation > 0.3 && !candidates.some(c => c.word === w.word)) {
+                     candidates.push({ word: w.word, weight: w.activation * 0.5 });
+                }
+            });
+            if (candidates.length === 0) {
+                const activeOrMemorable = this.wordList.filter(w => w.activation > 0.1 || w.memory > 0.2);
+                currentWordStr = activeOrMemorable.length > 0 ? activeOrMemorable[Math.floor(Math.random() * activeOrMemorable.length)].word : this.wordList[Math.floor(Math.random() * this.wordList.length)].word;
+            } else {
+                const totalWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
+                let randomVal = Math.random() * totalWeight;
+                for(const candidate of candidates) {
+                    randomVal -= candidate.weight;
+                    if(randomVal <= 0) {
+                        currentWordStr = candidate.word;
+                        break;
+                    }
+                }
+            }
+            if (response.slice(-3).includes(currentWordStr)) continue;
+            response.push(currentWordStr);
+        }
+        return response.join(' ');
+    }
+}
+
+// --- Main React Component ---
+const InteractiveWordSimV2 = () => {
+    const [conversation, setConversation] = useState([]);
+    const [userInput, setUserInput] = useState("");
+    const canvasRef = useRef(null);
+    const fieldContainerRef = useRef(null);
+    const languageFieldRef = useRef(new LanguageField());
+    const animationFrameId = useRef(null);
+    const chatEndRef = useRef(null);
+    
+    // --- ZOOM/PAN STATE & HANDLERS ---
+    const [viewTransform, setViewTransform] = useState({ x: 0, y: 0, scale: 0.8 });
+    const isPanning = useRef(false);
+    const panStart = useRef({ x: 0, y: 0 });
+
+    const animate = useCallback(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const field = languageFieldRef.current;
+
+        ctx.save();
+        ctx.fillStyle = 'black'; // Clear with solid black
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.translate(viewTransform.x, viewTransform.y);
+        ctx.scale(viewTransform.scale, viewTransform.scale);
+        
+        ctx.strokeStyle = "rgba(255, 255, 0, 0.1)";
+        ctx.lineWidth = 1 / viewTransform.scale;
+        field.wordList.forEach(word => {
+            if (word.activation > 0.1 || word.memory > 0.2) {
+                for (const [connectedWord, strength] of word.connections.entries()) {
+                    const other = field.words.get(connectedWord);
+                    if (other && (other.activation > 0.1 || other.memory > 0.2)) {
+                        ctx.globalAlpha = strength * 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(word.x, word.y);
+                        ctx.lineTo(other.x, other.y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        });
+        ctx.globalAlpha = 1.0;
+
+        field.wordList.forEach(word => {
+            word.update();
+            word.draw(ctx, viewTransform);
+        });
+
+        ctx.restore();
+        animationFrameId.current = requestAnimationFrame(animate);
+    }, [viewTransform]);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        const container = fieldContainerRef.current;
+        if (canvas && container) {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+        animationFrameId.current = requestAnimationFrame(animate);
+        return () => cancelAnimationFrame(animationFrameId.current);
+    }, [animate]);
+
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [conversation]);
+
+    const handleSendMessage = () => {
+        if (!userInput.trim()) return;
+        const field = languageFieldRef.current;
+        const userMsg = { speaker: 'You', text: userInput };
+        setConversation(prev => [...prev, userMsg]);
+        field.processText(userInput);
+        setTimeout(() => {
+            const aiResponse = field.generateResponse();
+            const aiMsg = { speaker: 'AI', text: aiResponse };
+            setConversation(prev => [...prev, aiMsg]);
+            field.processText(aiResponse);
+        }, 300 + Math.random() * 400);
+        setUserInput("");
+    };
+
+    const handleWheel = (e) => {
+        e.preventDefault();
+        const scaleAmount = -e.deltaY * 0.001 * viewTransform.scale; // Scale sensitivity with zoom
+        const newScale = Math.max(0.1, Math.min(5, viewTransform.scale + scaleAmount));
+        setViewTransform(prev => ({ ...prev, scale: newScale }));
+    };
+
+    const handleMouseDown = (e) => {
+        isPanning.current = true;
+        panStart.current = { x: e.clientX - viewTransform.x, y: e.clientY - viewTransform.y };
+    };
+
+    const handleMouseMove = (e) => {
+        if (!isPanning.current) return;
+        const x = e.clientX - panStart.current.x;
+        const y = e.clientY - panStart.current.y;
+        setViewTransform(prev => ({ ...prev, x, y }));
+    };
+
+    const handleMouseUp = () => { isPanning.current = false; };
+    
+    const handleZoom = (amount) => {
+        const newScale = Math.max(0.1, Math.min(5, viewTransform.scale + amount));
+        setViewTransform(prev => ({ ...prev, scale: newScale }));
+    };
+
+    return (
+        <div className="w-full h-screen bg-gray-900 text-white flex flex-row font-sans">
+            <div className="w-1/3 h-full flex flex-col border-r border-gray-700">
+                <div className="p-4 border-b border-gray-700">
+                    <div className="flex items-center gap-3"><Brain className="text-cyan-400" size={24} /><h1 className="text-xl font-bold">Semantic Field AI</h1></div>
+                    <p className="text-xs text-gray-400 mt-1">A visual language model where words are agents in a semantic space.</p>
+                </div>
+                <div className="flex-1 p-4 overflow-y-auto space-y-4">
+                    {conversation.map((msg, index) => (
+                        <div key={index} className={`flex flex-col ${msg.speaker === 'You' ? 'items-end' : 'items-start'}`}>
+                            <div className={`p-3 rounded-lg max-w-sm ${msg.speaker === 'You' ? 'bg-blue-600' : 'bg-gray-700'}`}><p className="text-sm">{msg.text}</p></div>
+                            <p className="text-xs text-gray-500 mt-1">{msg.speaker}</p>
+                        </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                </div>
+                <div className="p-4 border-t border-gray-700">
+                    <div className="flex gap-2">
+                        <textarea
+                            value={userInput}
+                            onChange={(e) => setUserInput(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
+                            placeholder="Talk to the field..."
+                            className="w-full p-2 bg-gray-800 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400 resize-none"
+                            rows={3}
+                        />
+                        <button onClick={handleSendMessage} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded-lg transition-colors flex items-center justify-center">
+                            <Send size={18} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div 
+                ref={fieldContainerRef}
+                className="w-2/3 h-full bg-black relative flex items-center justify-center cursor-grab active:cursor-grabbing"
+                onWheel={handleWheel}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+            >
+                <canvas ref={canvasRef} />
+                {/* --- ZOOM CONTROLS --- */}
+                <div className="absolute bottom-4 right-4 flex flex-col gap-2">
+                    <button onClick={() => handleZoom(0.1)} className="w-10 h-10 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center text-white">
+                        <ZoomIn size={20} />
+                    </button>
+                     <button onClick={() => handleZoom(-0.1)} className="w-10 h-10 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center text-white">
+                        <ZoomOut size={20} />
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default InteractiveWordSimV2;

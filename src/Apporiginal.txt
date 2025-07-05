@@ -1,0 +1,590 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Play, Pause, Brain, Eye, Volume2, Zap, Target, Mic } from 'lucide-react';
+
+// --- Configuration ---
+const LATENT_DIM = 64;
+const VISUAL_SCOUTS = 800;
+const AUDIO_SCOUTS = 400;
+const BINDING_THRESHOLD = 0.3;
+
+// --- Enhanced VAE with motion detection ---
+const useMotionVAE = (width, height) => {
+    const vaeState = useRef({
+        latentSpace: new Float32Array(LATENT_DIM * LATENT_DIM),
+        motionField: new Float32Array(LATENT_DIM * LATENT_DIM),
+        prevLatent: new Float32Array(LATENT_DIM * LATENT_DIM),
+        soundSync: new Float32Array(LATENT_DIM * LATENT_DIM),
+    });
+
+    const simulateEncoder = useCallback((imageData) => {
+        const { data } = imageData;
+        const latent = vaeState.current.latentSpace;
+        const motion = vaeState.current.motionField;
+        const prevLatent = vaeState.current.prevLatent;
+        
+        // Enhanced feature detection with motion
+        for (let y = 1; y < LATENT_DIM - 1; y++) {
+            for (let x = 1; x < LATENT_DIM - 1; x++) {
+                const sourceX = Math.floor(x * (width / LATENT_DIM));
+                const sourceY = Math.floor(y * (height / LATENT_DIM));
+                
+                // Sample 3x3 region for better feature detection
+                let brightness = 0;
+                let edgeStrength = 0;
+                let colorVariance = 0;
+                
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const pixelIdx = ((sourceY + dy) * width + (sourceX + dx)) * 4;
+                        const r = data[pixelIdx] || 0;
+                        const g = data[pixelIdx + 1] || 0;
+                        const b = data[pixelIdx + 2] || 0;
+                        
+                        const pixelBrightness = (r + g + b) / 3;
+                        brightness += pixelBrightness;
+                        
+                        // Edge detection
+                        if (dx === 0 && dy === 0) {
+                            edgeStrength = Math.abs(pixelBrightness - brightness/9);
+                        }
+                        
+                        // Color variance (skin tone detection)
+                        if (r > g && r > b && r > 80) { // Rough skin tone
+                            colorVariance += 0.5;
+                        }
+                    }
+                }
+                
+                brightness /= 9;
+                
+                // Combine features
+                const idx = y * LATENT_DIM + x;
+                const currentValue = Math.tanh(
+                    (brightness / 255) + 
+                    (edgeStrength / 100) + 
+                    (colorVariance / 255) - 0.5
+                );
+                
+                latent[idx] = currentValue;
+                
+                // Motion detection
+                const motionAmount = Math.abs(currentValue - prevLatent[idx]);
+                motion[idx] = motionAmount;
+            }
+        }
+        
+        // Copy current to previous
+        prevLatent.set(latent);
+        
+        return { latent, motion };
+    }, [width, height]);
+
+    const updateSoundSync = useCallback((audioEnergy, audioFreqs) => {
+        const soundSync = vaeState.current.soundSync;
+        
+        // Map audio energy to spatial regions
+        // High frequencies -> upper regions (mouth area typically)
+        // Low frequencies -> broader activation
+        for (let y = 0; y < LATENT_DIM; y++) {
+            for (let x = 0; x < LATENT_DIM; x++) {
+                const idx = y * LATENT_DIM + x;
+                
+                // Speech frequencies (300-3000 Hz) mapped to face region
+                const speechWeight = audioFreqs.slice(5, 25).reduce((sum, amp) => sum + Math.abs(amp), 0) / 20;
+                
+                // Focus on upper-middle region (typical mouth area)
+                const faceMask = Math.exp(-Math.pow((y - LATENT_DIM * 0.4), 2) / 200) *
+                               Math.exp(-Math.pow((x - LATENT_DIM * 0.5), 2) / 200);
+                
+                soundSync[idx] = speechWeight * faceMask * audioEnergy;
+            }
+        }
+    }, []);
+
+    return { vaeState, simulateEncoder, updateSoundSync };
+};
+
+// --- Audio processing simulation ---
+const useAudioProcessor = () => {
+    const audioState = useRef({
+        audioBuffer: [],
+        frequencies: new Array(32).fill(0),
+        energy: 0,
+        speechDetected: false,
+    });
+
+    const processAudio = useCallback(() => {
+        // Simulate audio input (replace with real Web Audio API)
+        const time = Date.now() / 1000;
+        
+        // Simulate speech-like audio with movement correlation
+        const speechPattern = Math.sin(time * 8) * Math.exp(-Math.pow((time % 3) - 1.5, 2));
+        const audioEnergy = Math.abs(speechPattern) * (0.5 + 0.5 * Math.random());
+        
+        // Simulate frequency spectrum
+        const frequencies = new Array(32).fill(0);
+        if (audioEnergy > 0.2) {
+            // Speech frequencies
+            for (let i = 5; i < 25; i++) {
+                frequencies[i] = audioEnergy * (0.5 + 0.5 * Math.random()) * Math.exp(-Math.pow(i - 15, 2) / 50);
+            }
+        }
+        
+        audioState.current.energy = audioEnergy;
+        audioState.current.frequencies = frequencies;
+        audioState.current.speechDetected = audioEnergy > 0.3;
+        audioState.current.audioBuffer.push(audioEnergy);
+        
+        if (audioState.current.audioBuffer.length > 100) {
+            audioState.current.audioBuffer.shift();
+        }
+        
+        return { energy: audioEnergy, frequencies, speechDetected: audioEnergy > 0.3 };
+    }, []);
+
+    return { audioState, processAudio };
+};
+
+// --- Multi-modal scout system ---
+const useMultiModalScouts = () => {
+    const scoutsRef = useRef({
+        visual: [],
+        audio: [],
+        binding: []
+    });
+
+    const initializeScouts = useCallback(() => {
+        // Visual scouts
+        scoutsRef.current.visual = Array.from({ length: VISUAL_SCOUTS }, () => ({
+            x: Math.random() * LATENT_DIM,
+            y: Math.random() * LATENT_DIM,
+            vx: 0, vy: 0,
+            activation: 0,
+            motionSensitivity: Math.random(),
+            audioCorrelation: 0,
+            type: 'visual'
+        }));
+
+        // Audio scouts (conceptual - they track audio energy patterns)
+        scoutsRef.current.audio = Array.from({ length: AUDIO_SCOUTS }, () => ({
+            x: Math.random() * LATENT_DIM,
+            y: Math.random() * LATENT_DIM,
+            vx: 0, vy: 0,
+            activation: 0,
+            frequencyPreference: Math.random() * 32,
+            visualCorrelation: 0,
+            type: 'audio'
+        }));
+
+        // Binding scouts - these are the magic ones that connect audio and visual
+        scoutsRef.current.binding = [];
+    }, []);
+
+    const updateScouts = useCallback((visualData, audioData, soundSync) => {
+        const { latent, motion } = visualData;
+        const { energy, frequencies, speechDetected } = audioData;
+
+        // Update visual scouts
+        scoutsRef.current.visual.forEach(scout => {
+            const ix = Math.floor(scout.x);
+            const iy = Math.floor(scout.y);
+            
+            if (ix > 0 && ix < LATENT_DIM - 1 && iy > 0 && iy < LATENT_DIM - 1) {
+                const idx = iy * LATENT_DIM + ix;
+                
+                // Visual scouts attracted to features + motion
+                const visualActivation = latent[idx];
+                const motionActivation = motion[idx] * scout.motionSensitivity;
+                
+                scout.activation = visualActivation + motionActivation;
+                
+                // Check for audio correlation
+                const soundSyncValue = soundSync[idx];
+                scout.audioCorrelation = scout.audioCorrelation * 0.9 + soundSyncValue * 0.1;
+                
+                // Movement based on gradients
+                const gradX = (latent[idx + 1] - latent[idx - 1]) / 2;
+                const gradY = (latent[idx + LATENT_DIM] - latent[idx - LATENT_DIM]) / 2;
+                
+                // Add motion gradient
+                const motionGradX = (motion[idx + 1] - motion[idx - 1]) / 2;
+                const motionGradY = (motion[idx + LATENT_DIM] - motion[idx - LATENT_DIM]) / 2;
+                
+                scout.vx = scout.vx * 0.8 + (gradX + motionGradX * 2) * 0.3 + (Math.random() - 0.5) * 0.2;
+                scout.vy = scout.vy * 0.8 + (gradY + motionGradY * 2) * 0.3 + (Math.random() - 0.5) * 0.2;
+                
+                scout.x += scout.vx;
+                scout.y += scout.vy;
+                
+                // Boundaries
+                scout.x = Math.max(1, Math.min(LATENT_DIM - 2, scout.x));
+                scout.y = Math.max(1, Math.min(LATENT_DIM - 2, scout.y));
+            }
+        });
+
+        // Update audio scouts
+        scoutsRef.current.audio.forEach(scout => {
+            const freqIdx = Math.floor(scout.frequencyPreference);
+            const freqActivation = frequencies[freqIdx] || 0;
+            
+            scout.activation = freqActivation;
+            
+            // Audio scouts move toward sound-synchronized visual regions
+            const ix = Math.floor(scout.x);
+            const iy = Math.floor(scout.y);
+            
+            if (ix > 0 && ix < LATENT_DIM - 1 && iy > 0 && iy < LATENT_DIM - 1) {
+                const idx = iy * LATENT_DIM + ix;
+                const soundSyncValue = soundSync[idx];
+                
+                scout.visualCorrelation = scout.visualCorrelation * 0.9 + soundSyncValue * 0.1;
+                
+                // Move toward areas with high sound sync
+                const syncGradX = (soundSync[idx + 1] - soundSync[idx - 1]) / 2;
+                const syncGradY = (soundSync[idx + LATENT_DIM] - soundSync[idx - LATENT_DIM]) / 2;
+                
+                scout.vx = scout.vx * 0.9 + syncGradX * 0.5 + (Math.random() - 0.5) * 0.1;
+                scout.vy = scout.vy * 0.9 + syncGradY * 0.5 + (Math.random() - 0.5) * 0.1;
+                
+                scout.x += scout.vx;
+                scout.y += scout.vy;
+                
+                scout.x = Math.max(1, Math.min(LATENT_DIM - 2, scout.x));
+                scout.y = Math.max(1, Math.min(LATENT_DIM - 2, scout.y));
+            }
+        });
+
+        // Create binding scouts where audio and visual correlate strongly
+        const newBindings = [];
+        
+        if (speechDetected) {
+            scoutsRef.current.visual.forEach(vScout => {
+                if (vScout.audioCorrelation > BINDING_THRESHOLD && vScout.activation > 0.2) {
+                    // Find nearby audio scouts
+                    const nearbyAudioScouts = scoutsRef.current.audio.filter(aScout => {
+                        const dx = vScout.x - aScout.x;
+                        const dy = vScout.y - aScout.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        return distance < 10 && aScout.visualCorrelation > BINDING_THRESHOLD;
+                    });
+                    
+                    if (nearbyAudioScouts.length > 0) {
+                        newBindings.push({
+                            x: vScout.x,
+                            y: vScout.y,
+                            strength: (vScout.audioCorrelation + nearbyAudioScouts[0].visualCorrelation) / 2,
+                            type: 'mouth_binding',
+                            age: 0
+                        });
+                    }
+                }
+            });
+        }
+        
+        // Update existing bindings
+        scoutsRef.current.binding = scoutsRef.current.binding
+            .map(binding => ({ ...binding, age: binding.age + 1, strength: binding.strength * 0.95 }))
+            .filter(binding => binding.strength > 0.1 && binding.age < 30)
+            .concat(newBindings);
+        
+    }, []);
+
+    return { scoutsRef, initializeScouts, updateScouts };
+};
+
+// --- Main Component ---
+const AudioVisualBindingDemo = () => {
+    const [isRunning, setIsRunning] = useState(false);
+    const [speechDetected, setSpeechDetected] = useState(false);
+    const [bindingCount, setBindingCount] = useState(0);
+    const [audioLevel, setAudioLevel] = useState(0);
+
+    const videoRef = useRef(null);
+    const inputCanvasRef = useRef(null);
+    const vaeCanvasRef = useRef(null);
+    const mindCanvasRef = useRef(null);
+    const audioCanvasRef = useRef(null);
+    const animationFrameId = useRef();
+    
+    const width = 320;
+    const height = 240;
+
+    const { vaeState, simulateEncoder, updateSoundSync } = useMotionVAE(width, height);
+    const { audioState, processAudio } = useAudioProcessor();
+    const { scoutsRef, initializeScouts, updateScouts } = useMultiModalScouts();
+
+    useEffect(() => {
+        initializeScouts();
+    }, [initializeScouts]);
+
+    const setupWebcam = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width, height },
+                audio: true 
+            });
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+            }
+        } catch (err) {
+            console.error("Error accessing webcam:", err);
+        }
+    };
+    
+    useEffect(() => {
+        setupWebcam();
+    }, []);
+
+    const animate = useCallback(() => {
+        if (!isRunning || !videoRef.current || videoRef.current.readyState < 2) return;
+
+        // Process webcam input
+        const inputCtx = inputCanvasRef.current?.getContext('2d');
+        if (!inputCtx) return;
+        
+        inputCtx.drawImage(videoRef.current, 0, 0, width, height);
+        const imageData = inputCtx.getImageData(0, 0, width, height);
+
+        // Process audio
+        const audioData = processAudio();
+        
+        // VAE processing with motion detection
+        const visualData = simulateEncoder(imageData);
+        
+        // Update sound synchronization
+        updateSoundSync(audioData.energy, audioData.frequencies);
+        
+        // VAE reconstruction - FIX: Proper ImageData construction
+        const vaeCtx = vaeCanvasRef.current?.getContext('2d');
+        if (vaeCtx) {
+            // Create proper ImageData with correct dimensions
+            const reconstructedData = new Uint8ClampedArray(LATENT_DIM * LATENT_DIM * 4);
+            for (let i = 0; i < visualData.latent.length; i++) {
+                const value = Math.max(0, Math.min(255, (visualData.latent[i] + 1) * 127));
+                reconstructedData[i * 4] = value;           // R
+                reconstructedData[i * 4 + 1] = value * 0.8; // G  
+                reconstructedData[i * 4 + 2] = value * 1.2; // B
+                reconstructedData[i * 4 + 3] = 255;         // A
+            }
+            
+            const reconstructed = new ImageData(reconstructedData, LATENT_DIM, LATENT_DIM);
+            createImageBitmap(reconstructed).then(bmp => {
+                vaeCtx.drawImage(bmp, 0, 0, width, height);
+            });
+        }
+
+        // Update scouts
+        updateScouts(visualData, audioData, vaeState.current.soundSync);
+
+        // Update UI
+        setSpeechDetected(audioData.speechDetected);
+        setBindingCount(scoutsRef.current.binding.length);
+        setAudioLevel(audioData.energy);
+
+        // Render mind visualization
+        const mindCtx = mindCanvasRef.current?.getContext('2d');
+        if (mindCtx) {
+            mindCtx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            mindCtx.fillRect(0, 0, LATENT_DIM * 6, LATENT_DIM * 6);
+
+            // Draw latent space
+            const mindImageData = mindCtx.createImageData(LATENT_DIM, LATENT_DIM);
+            for(let i = 0; i < visualData.latent.length; i++) {
+                const visual = Math.max(0, Math.min(255, (visualData.latent[i] + 1) * 127));
+                const motion = Math.max(0, Math.min(255, visualData.motion[i] * 500));
+                const sound = Math.max(0, Math.min(255, vaeState.current.soundSync[i] * 300));
+                
+                mindImageData.data[i*4] = visual;
+                mindImageData.data[i*4+1] = motion;
+                mindImageData.data[i*4+2] = sound;
+                mindImageData.data[i*4+3] = 255;
+            }
+            
+            createImageBitmap(mindImageData).then(bmp => {
+                mindCtx.drawImage(bmp, 0, 0, LATENT_DIM * 6, LATENT_DIM * 6);
+                
+                // Draw visual scouts (blue)
+                mindCtx.fillStyle = 'rgba(100, 150, 255, 0.7)';
+                scoutsRef.current.visual.forEach(scout => {
+                    if (scout.activation > 0.1) {
+                        const size = 1 + scout.activation * 2;
+                        mindCtx.beginPath();
+                        mindCtx.arc(scout.x * 6, scout.y * 6, size, 0, 2 * Math.PI);
+                        mindCtx.fill();
+                    }
+                });
+                
+                // Draw audio scouts (red)
+                mindCtx.fillStyle = 'rgba(255, 100, 100, 0.7)';
+                scoutsRef.current.audio.forEach(scout => {
+                    if (scout.activation > 0.1) {
+                        const size = 1 + scout.activation * 2;
+                        mindCtx.beginPath();
+                        mindCtx.arc(scout.x * 6, scout.y * 6, size, 0, 2 * Math.PI);
+                        mindCtx.fill();
+                    }
+                });
+                
+                // Draw binding scouts (bright yellow - the magic!)
+                mindCtx.fillStyle = 'rgba(255, 255, 0, 0.9)';
+                mindCtx.strokeStyle = 'white';
+                mindCtx.lineWidth = 2;
+                scoutsRef.current.binding.forEach(binding => {
+                    const size = 3 + binding.strength * 5;
+                    mindCtx.beginPath();
+                    mindCtx.arc(binding.x * 6, binding.y * 6, size, 0, 2 * Math.PI);
+                    mindCtx.fill();
+                    mindCtx.stroke();
+                    
+                    // Label
+                    mindCtx.fillStyle = 'white';
+                    mindCtx.font = '10px Arial';
+                    mindCtx.fillText('MOUTH?', binding.x * 6 + 10, binding.y * 6);
+                    mindCtx.fillStyle = 'rgba(255, 255, 0, 0.9)';
+                });
+            });
+        }
+
+        // Render audio visualization
+        const audioCtx = audioCanvasRef.current?.getContext('2d');
+        if (audioCtx) {
+            audioCtx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            audioCtx.fillRect(0, 0, 300, 100);
+            
+            // Audio waveform
+            if (audioState.current.audioBuffer.length > 1) {
+                audioCtx.strokeStyle = audioData.speechDetected ? '#00ff00' : '#ffffff';
+                audioCtx.lineWidth = 2;
+                audioCtx.beginPath();
+                audioState.current.audioBuffer.forEach((sample, i) => {
+                    const x = (i / audioState.current.audioBuffer.length) * 300;
+                    const y = 50 + sample * 40;
+                    if (i === 0) audioCtx.moveTo(x, y);
+                    else audioCtx.lineTo(x, y);
+                });
+                audioCtx.stroke();
+            }
+            
+            // Frequency bars
+            audioCtx.fillStyle = audioData.speechDetected ? '#ffff00' : '#666666';
+            audioState.current.frequencies.forEach((amp, i) => {
+                const x = (i / audioState.current.frequencies.length) * 300;
+                const height = amp * 30;
+                audioCtx.fillRect(x, 100 - height, 300 / audioState.current.frequencies.length - 1, height);
+            });
+        }
+
+        animationFrameId.current = requestAnimationFrame(animate);
+    }, [isRunning, simulateEncoder, updateSoundSync, processAudio, updateScouts, vaeState, audioState, scoutsRef]);
+
+    useEffect(() => {
+        if (isRunning) {
+            animationFrameId.current = requestAnimationFrame(animate);
+        } else {
+            cancelAnimationFrame(animationFrameId.current);
+        }
+        return () => cancelAnimationFrame(animationFrameId.current);
+    }, [isRunning, animate]);
+
+    return (
+        <div className="min-h-screen bg-gray-900 text-white p-4">
+            <div className="max-w-7xl mx-auto">
+                <header className="text-center mb-4">
+                    <h1 className="text-4xl font-bold text-cyan-400 flex items-center justify-center gap-3">
+                        <Brain size={36} /> Audio-Visual Binding Demo
+                    </h1>
+                    <p className="text-gray-400">Scouts discover the connection between sound and movement</p>
+                </header>
+
+                <div className="flex justify-center items-center gap-6 mb-4 p-4 bg-gray-800 rounded-lg">
+                    <button
+                        onClick={() => setIsRunning(!isRunning)}
+                        className={`px-6 py-2 rounded-lg font-semibold flex items-center gap-2 ${
+                            isRunning ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
+                        }`}
+                    >
+                        {isRunning ? <Pause /> : <Play />}
+                        {isRunning ? 'Pause' : 'Start'}
+                    </button>
+                    
+                    <div className="flex items-center gap-4 text-sm">
+                        <div className={`flex items-center gap-2 ${speechDetected ? 'text-green-400' : 'text-gray-400'}`}>
+                            <Mic className="w-4 h-4" />
+                            <span>Speech: {speechDetected ? 'DETECTED' : 'None'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Volume2 className="w-4 h-4 text-blue-400" />
+                            <span>Audio: {(audioLevel * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Target className="w-4 h-4 text-yellow-400" />
+                            <span>Mouth Bindings: {bindingCount}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                    <div className="p-4 bg-gray-800 rounded-lg">
+                        <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                            <Eye /> Live Input
+                        </h2>
+                        <canvas ref={inputCanvasRef} width={width} height={height} className="w-full h-auto rounded bg-black" />
+                    </div>
+                    
+                    <div className="p-4 bg-gray-800 rounded-lg">
+                        <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                            <Zap /> VAE Features
+                        </h2>
+                        <canvas ref={vaeCanvasRef} width={width} height={height} className="w-full h-auto rounded bg-black" />
+                    </div>
+                    
+                    <div className="p-4 bg-gray-800 rounded-lg">
+                        <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                            <Brain /> Multi-Modal Mind
+                        </h2>
+                        <canvas ref={mindCanvasRef} width={LATENT_DIM * 6} height={LATENT_DIM * 6} className="w-full h-auto rounded bg-black" />
+                    </div>
+                    
+                    <div className="p-4 bg-gray-800 rounded-lg">
+                        <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                            <Volume2 /> Audio Analysis
+                        </h2>
+                        <canvas ref={audioCanvasRef} width={300} height={100} className="w-full h-auto rounded bg-black" />
+                    </div>
+                </div>
+
+                <div className="bg-gray-800 rounded-lg p-6">
+                    <h3 className="text-xl font-semibold mb-4">The Magic of Audio-Visual Binding</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+                        <div>
+                            <h4 className="font-semibold text-blue-400 mb-2">Visual Scouts (Blue)</h4>
+                            <p className="text-gray-300">Track visual features and motion. When they detect movement that correlates with sound, they get excited.</p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold text-red-400 mb-2">Audio Scouts (Red)</h4>
+                            <p className="text-gray-300">Follow speech frequencies. They move toward visual regions that show synchronized motion.</p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold text-yellow-400 mb-2">Binding Scouts (Yellow)</h4>
+                            <p className="text-gray-300">THE MAGIC! These appear when audio and visual scouts discover temporal correlation - likely a speaking mouth!</p>
+                        </div>
+                    </div>
+                    
+                    <div className="mt-6 p-4 bg-gray-900 rounded">
+                        <h4 className="font-semibold mb-2">Try This:</h4>
+                        <p className="text-gray-300">
+                            • <strong>Talk to the camera</strong> - Watch yellow binding scouts appear on your mouth!<br/>
+                            • <strong>Move silently</strong> - Visual scouts track movement but no bindings form<br/>
+                            • <strong>Speak off-camera</strong> - Audio scouts activate but can't find visual correlation<br/>
+                            • <strong>Tap objects</strong> - See if the system discovers audio-visual correlation
+                        </p>
+                    </div>
+                </div>
+
+                <video ref={videoRef} autoPlay playsInline className="hidden" />
+            </div>
+        </div>
+    );
+};
+
+export default AudioVisualBindingDemo;
