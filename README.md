@@ -1,70 +1,184 @@
-# Getting Started with Create React App
+# 🧠 Geometric Dreaming Intelligence
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A weird system where "scouts" are particles that track you on screen and form memories. You can also see what is moving as a yellow flashing update on feature field.
 
-## Available Scripts
+[![Deploy to GitHub Pages](https://github.com/anttiluode/GeometricDreamingIntelligence/actions/workflows/deploy.yml/badge.svg)](https://github.com/anttiluode/GeometricDreamingIntelligence/actions/workflows/deploy.yml)
 
-In the project directory, you can run:
+## 🚀 [Live Demo](https://anttiluode.github.io/GeometricDreamingIntelligence)
 
-### `npm start`
+## 🎯 What Makes This Special
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### The Scout System
+This isn't just another computer vision demo - it's a living geometric intelligence with autonomous particles called **"scouts"** that behave like miniature visual cortex neurons:
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+- **🔴 Edge Scouts** - Track vertical, horizontal, and diagonal edges in real-time
+- **🟢 Motion Scouts** - Detect movement in all four directions  
+- **🟡 Temporal Scouts** - The special ones! These yellow scouts flash and track what's actually moving in your image, creating dynamic temporal patterns
+- **🟣 Texture Scouts** - Analyze surface patterns and textures
+- **⚪ Color Scouts** - Respond to brightness and contrast changes
 
-### `npm test`
+### The Dream Mode 🌙
+Cover your camera and watch the magic happen:
+- The system enters **autonomous dream mode**
+- Scouts begin exploring based on learned memory patterns
+- Attractors evolve independently, creating emergent geometric patterns
+- Memory patterns persist and influence future dreaming sessions
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Memory Formation 🧠
+- **Persistent Memory**: The system forms lasting memories of visual patterns
+- **VAE-like Architecture**: Associations between visual input and geometric attractors
+- **Save/Load States**: Export and import memory configurations
+- **Temporal Coherence**: Memory patterns evolve over time, creating continuity
 
-### `npm run build`
+## 🎮 How to Experience It
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+1. **Allow camera access** when prompted
+2. **Let it learn** - Move around, show it objects, let it see your environment for 30+ seconds
+3. **Watch the scouts** - See how different colored particles track different visual features
+4. **Pay attention to yellow flashes** - These indicate motion detection in real-time
+5. **Cover the camera** - Use your hand or tape to block the camera
+6. **Enter dream mode** - Watch as the system begins autonomous exploration
+7. **Save memories** - Export interesting memory states for later
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## 🔬 Technical Innovation
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Minimodel Architecture
+Each scout type acts as a specialized "minimodel" similar to neurons in the visual cortex:
+- **Receptive Fields**: Each scout responds to specific visual features
+- **Population Dynamics**: Scouts cluster and interact based on activation patterns
+- **Emergent Intelligence**: Complex behaviors emerge from simple scout interactions
 
-### `npm run eject`
+### Geometric Memory System
+- **Psi Field**: A geometric field that captures visual essence
+- **Attractor Dynamics**: Memory stored as evolving geometric attractors
+- **Feature Maps**: Separate processing channels for edges, motion, color, and texture
+- **Temporal Integration**: Past and present visual information blend seamlessly
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Real-time Processing
+- **256x256 Processing Grid**: High-resolution analysis at 60fps
+- **4000+ Active Scouts**: Massive parallel processing
+- **Multiple Visualization Layers**: See the system's "thoughts" in real-time
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## 🎨 Visual Interface
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+The interface shows six synchronized views:
+1. **Visual Input** - What the camera sees
+2. **Feature Field** - Processed visual features (with yellow motion flashes!)
+3. **Scout Population** - Live scout movements and activations
+4. **Active Attractors** - Current geometric attention patterns
+5. **Memory Patterns** - Long-term geometric memories
+6. **Control Panel** - Scout type toggles and system controls
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## 🛠 Technology Stack
 
-## Learn More
+- **React 19** - Modern UI framework
+- **Canvas API** - High-performance real-time rendering
+- **WebRTC** - Camera access and video processing
+- **Custom Algorithms** - Proprietary scout dynamics and memory formation
+- **Geometric Mathematics** - Advanced attractor field calculations
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## 🚀 Getting Started
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### Prerequisites
+- Node.js 18+ 
+- Modern web browser with camera support
+- Good lighting for optimal scout behavior
 
-### Code Splitting
+### Installation
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```bash
+# Clone the repository
+git clone https://github.com/anttiluode/GeometricDreamingIntelligence.git
 
-### Analyzing the Bundle Size
+# Navigate to project directory
+cd GeometricDreamingIntelligence
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+# Install dependencies
+npm install
 
-### Making a Progressive Web App
+# Start development server
+npm start
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+# Open browser to http://localhost:3000
+```
 
-### Advanced Configuration
+### Building for Production
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+```bash
+npm run build
+```
 
-### Deployment
+### Deploy to GitHub Pages
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+```bash
+npm run deploy
+```
 
-### `npm run build` fails to minify
+## 🎯 Scout Types & Colors
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+| Scout Type | Color | Function |
+|------------|-------|----------|
+| Edge Vertical | 🔴 Red | Detects vertical edges and boundaries |
+| Edge Horizontal | 🟠 Orange | Tracks horizontal lines and structures |
+| Edge Diagonal 1 | 🟡 Yellow-Orange | Diagonal edge detection (/) |
+| Edge Diagonal 2 | 🟡 Yellow | Diagonal edge detection (\) |
+| Motion Up | 🟢 Green | Upward movement tracking |
+| Motion Down | 🟢 Light Green | Downward movement tracking |
+| Motion Left | 🔵 Cyan | Leftward movement tracking |
+| Motion Right | 🔵 Blue | Rightward movement tracking |
+| Color Bright | ⚪ White | High brightness detection |
+| Color Dark | ⚫ Gray | Low brightness/shadow detection |
+| Texture High | 🟣 Magenta | High texture complexity |
+| Texture Low | 🟣 Purple | Low texture/smooth surfaces |
+
+## 🧪 Experiment Ideas
+
+- **Object Recognition**: Show it different objects and see how scout patterns change
+- **Motion Tracking**: Wave your hands and watch the yellow temporal scouts respond
+- **Memory Training**: Teach it patterns, then let it dream about them
+- **Environmental Mapping**: Move the camera around a room and observe memory formation
+- **Lighting Studies**: Change lighting conditions and see adaptation
+- **Dream Analysis**: Compare dream patterns after different training sessions
+
+## 🔮 Future Enhancements
+
+- **Multi-camera Support**: Stereo vision capabilities
+- **Audio Integration**: Sound-responsive scouts
+- **3D Geometric Fields**: Volumetric memory structures
+- **Scout Evolution**: Genetic algorithms for scout optimization
+- **Pattern Recognition**: Learned object classification
+- **Collaborative Dreaming**: Multiple systems sharing memories
+
+## 📚 Inspiration
+
+This project draws inspiration from:
+- **Neuroscience**: Visual cortex organization and neural field theory
+- **Computer Vision**: Classical and modern CV algorithms
+- **Dynamical Systems**: Attractor networks and emergence
+- **Artificial Life**: Self-organizing systems and emergence
+- **Geometric Deep Learning**: Graph neural networks and manifold learning
+
+## 🤝 Contributing
+
+We welcome contributions! Areas where help is needed:
+- Scout behavior optimization
+- New visualization modes
+- Memory compression algorithms
+- Performance improvements
+- Mobile device support
+
+## 📄 License
+
+MIT License - see LICENSE file for details
+
+## 🙏 Acknowledgments
+
+- Inspired by the geometric intelligence of biological visual systems
+- Built with modern web technologies for accessibility
+- Dedicated to exploring the boundaries between artificial and natural intelligence
+
+---
+
+**Experience the future of geometric intelligence - where particles dream and memories dance in mathematical space.** 🌟
+
+*Ready to see how your visual world looks through the eyes of dreaming geometry?*
