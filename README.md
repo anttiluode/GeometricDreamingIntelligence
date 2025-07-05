@@ -1,5 +1,7 @@
 # 🧠 Geometric Dreaming Intelligence
 
+It is live at: https://anttiluode.github.io/GeometricDreamingIntelligence/
+
 A weird system where "scouts" are particles that track you on screen and form memories. You can also see what is moving as a yellow flashing update on feature field.
 
 [![Deploy to GitHub Pages](https://github.com/anttiluode/GeometricDreamingIntelligence/actions/workflows/deploy.yml/badge.svg)](https://github.com/anttiluode/GeometricDreamingIntelligence/actions/workflows/deploy.yml)
